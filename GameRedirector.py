@@ -2,7 +2,6 @@
 Script for swapping games between a storage location and the donor title location.
 Basic LayeredFS stuff.
 
-
 If you are not a dev, keep to editing stuff in the comments below. Or you will probably break something.
 I'll keep an eye on pull requests if anyone is updating functionality.
 """
@@ -229,6 +228,17 @@ class Manager(object):
         Moves the selected game to the selected donor
         :return:
         """
+        self.read_config()
+        if self.selected_donor is None:
+            print("Select a donor first")
+            countdown()
+            return False
+        if self.selected_game is None:
+            print("Select a game first")
+            countdown()
+            return False
+        if self.selected_donor.get_currently_used() != 'None':
+            self.move_to_games()
         if not os.path.exists(DONOR_PATH + self.selected_donor.get_title_id()):
             if self.selected_donor.set_currently_used(self.selected_game):
                 with suppress(OSError):
@@ -244,6 +254,9 @@ class Manager(object):
                     if os.path.exists(GAMES_PATH + self.selected_game + EXEFS_PATH):
                         shutil.rmtree(GAMES_PATH + self.selected_game + EXEFS_PATH)
                     print("Success!")
+                print("Updating config.ini ...")
+                self.write_config()
+                print("Success!")
                 return True
         return False
 
@@ -252,6 +265,11 @@ class Manager(object):
         Moves the selected donor game to the games folder
         :return:
         """
+        self.read_config()
+        if self.selected_donor is None:
+            print("Select a donor first")
+            countdown()
+            return False
         if os.path.exists(DONOR_PATH + self.selected_donor.get_title_id()):
             if self.selected_donor.set_currently_used(None):
                 with suppress(OSError):
@@ -265,12 +283,14 @@ class Manager(object):
                     if os.path.exists(DONOR_PATH + self.selected_donor.get_title_id()):
                         shutil.rmtree(DONOR_PATH + self.selected_donor.get_title_id())
                     print("Success!")
+                self.write_config()
 
     def move_all_to_games(self):
         """
         Moves all currently used games back to the games folder
         :return:
         """
+        self.read_config()
         for donor in self.donor_titles:
             if os.path.exists(DONOR_PATH + donor.get_title_id()):
                 if donor.set_currently_used(None):
@@ -285,6 +305,7 @@ class Manager(object):
                         if os.path.exists(DONOR_PATH + donor.get_title_id()):
                             shutil.rmtree(DONOR_PATH + donor.get_title_id())
                         print("Success!")
+                    self.write_config()
 
     def edit_npdm(self):
         """
