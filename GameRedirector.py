@@ -5,44 +5,24 @@ Basic LayeredFS stuff.
 If you are not a dev, keep to editing stuff in the comments below. Or you will probably break something.
 I'll keep an eye on pull requests if anyone is updating functionality.
 """
-
 import functools
 import os
 import shutil
 import sys
 import time
-from contextlib import suppress
 
 from nx.utils import AnsiMenu as Menu
 from nx.utils import clear_terminal as clr
 
-print = functools.partial(print, flush=True)
+# PyNX FIX YOUR ****, I shouldn't need to append a path to sys to get the library >.>
+sys.path.append(os.path.abspath('/switch/PyNX/lib/python3.5/'))
+import configparser
 
-"""
-=================================================================================
-ONLY EDIT THIS PORTION (End Users)
-=================================================================================
-"""
-ROMFS_STYLE = 0  # 0 - Folder/dir, 1 = RomFs.bin, 2 = RomFs.romfs
-GAMES_PATH = '/switch/games/'  # Root directory for game storage
-DONOR_PATH = '/atmosphere/titles/'  # Root directory for donors
-CONFIG_PATH = '/switch/games/config.ini'  # Where the config.ini is saved
-ERROR_PATH = '/switch/games/error.txt'  # Where the error.txt is saved
-DONOR_TITLES = ['Blazblue', 'Fallout Shelter', 'Fortnite', 'Hulu', 'Kitten Squad', 'Octopath Demo', 'PaccMan VS',
-                'Pic-a-Pix Deluxe Demo', 'Pinball FX3', 'PixelJunk Monsters 2 Demo', 'Pokémon Quest',
-                'Stern Pinball Arcade', 'The Pinball Arcade']  # Donor Titles
-DONOR_TIDS = ['0100C6E00AF2C000', '010043500A17A000', '010025400AECE000', '0100A66003384000', '01000C900A136000',
-              '010096000B3EA000', '0100BA3003B70000', '01006E30099B8000', '0100DB7003828000', '01004AF00A772000',
-              '01005D100807A000', '0100AE0006474000', '0100cd300880E000']  # Donor TitleIDs
-"""
-=================================================================================
-DONT EDIT BELOW THIS UNLESS YOU KNOW WHAT YOU ARE DOING
-=================================================================================
-"""
+print = functools.partial(print, flush=True)  # Just a macro, we always need to flush... so do it?
 
 MENU_SEP = '============================'  # Menu seperator
 MAIN_OPTIONS = ['Select Donor Title', 'Select Game Folder', 'Put Game In Donor', 'Put Game In Donor [Edit NPDM]',
-                'Put Donor Game Back', 'Put All Games Back', MENU_SEP, 'Show Config', 'Reset Config', MENU_SEP, 'Exit']
+                'Put Donor Game Back', 'Put All Games Back', MENU_SEP, 'Show Config', MENU_SEP, 'Exit']
 
 MENU_SIGN = """  
 ____   _   _   _ ___   ____ ___ ___  ___  ____ ___ ________ ____ ____  
@@ -51,18 +31,14 @@ ____   _   _   _ ___   ____ ___ ___  ___  ____ ___ ________ ____ ____
 )_`__)_/ \_)_( )_)___( |_()_)___/___)_____|_()_)___\__( )_( \____|_()_\ 
 
 """
-ROMFS_PATH = ['/RomFs/', '/RomFs.bin', '/RomFs.romfs']
-EXEFS_PATH = '/ExeFs/'
-NPDM_PATH = '/ExeFs/main.npdm'
 
 
 def clear():
     """
     Clears out the terminal screen and prints the menu sign at the top
-    :return:
     """
     clr()
-    sys.stdout.buffer.write(b'Hello')
+    sys.stdout.buffer.write(b'Hello')  # We just need to write to the buffer, doesn't matter what for it to clear.
     sys.stdout.flush()
     print(MENU_SIGN)
 
@@ -70,7 +46,6 @@ def clear():
 def countdown():
     """
     Simple countdown because if not we would never read whats on the screen..
-    :return:
     """
     print("Returning to main menu in 5 seconds.")
     for i in range(5):
@@ -79,79 +54,43 @@ def countdown():
     clear()
 
 
-class DonorTitle(object):
+def move(src, dst):
     """
-    Object to hold the donor information
+    Macro move, so I don't need to encapsulate so much in try:excepts
     """
-
-    def __init__(self, title_id):
-        self.title_id = title_id
-        self.current_used = None
-
-    def get_title_id(self):
-        """
-        Returns the Title ID as a string
-        :return:
-        """
-        return "{}".format(self.title_id)
-
-    def set_currently_used(self, game_name):
-        """
-        Sets the currently used game
-        :param game_name:
-        :return:
-        """
-        if game_name is not None and os.path.isdir(GAMES_PATH + game_name):
-            self.current_used = game_name
-            return True
-        self.current_used = None
-        return False
-
-    def get_currently_used(self):
-        """
-        Returns the currently used game as a string
-        :return:
-        """
-        if self.current_used is not None:
-            return "()".format(self.current_used)
-        return "None"
+    try:
+        shutil.move(src, dst)
+    except OSError:
+        pass
 
 
 class Manager(object):
-    """
-    The meat and potatos. This does pretty much everything.
-    """
-
-    def __init__(self, config_file, error_file):
-        self.config_file = config_file
-        self.error_file = error_file
+    def __init__(self):
+        self.CONFIG_PATH = '/switch/games/config.ini'
+        self.DEFAULT_DONOR_DICT = {
+            'hulu': '0100A66003384000',
+            'paccman vs': '0100BA3003B70000',
+            'blazblue': '0100C6E00AF2C000',
+            'pokémon quest': '01005D100807A000',
+            'pinball fx3': '0100DB7003828000',
+            'pic-a-pix deluxe demo': '01006E30099B8000',
+            'octopath demo': '010096000B3EA000',
+            'fortnite': '010025400AECE000',
+            'the pinball arcade': '0100CD300880E000',
+            'kitten squad': '01000C900A136000',
+            'stern pinball arcade': '0100AE0006474000',
+            'pixeljunk monsters 2 demo': '01004AF00A772000',
+            'fallout shelter': '010043500A17A000'
+        }
+        # Oi. Pycharm yells if I don't declare them. Blame the IDE.
+        self.games_path = None
+        self.donor_path = None
+        self.npdm_file = None
+        self.romfs = None
+        self.exefs = None
         self.donor_titles = None
         self.selected_donor = None
         self.selected_game = None
-
-    def set_donor(self, title_id):
-        """
-        Sets the donor title to use
-        :param title_id:
-        :return:
-        """
-        if title_id is not None:
-            for donor in self.donor_titles:
-                if donor.get_title_id() == title_id:
-                    self.selected_donor = donor
-                    return True
-            return False
-        self.selected_donor = None
-        return True
-
-    def get_donor(self):
-        """
-        Returns the donor as a string
-        :return:
-        """
-        if self.selected_donor is not None:
-            return "{}".format(self.selected_donor)
-        return "None"
 
     def set_game(self, game_name):
         """
@@ -160,72 +99,168 @@ class Manager(object):
         :return:
         """
         if game_name is not None:
-            if os.path.exists(GAMES_PATH + game_name):
+            if os.path.exists(self.games_path + game_name):
                 self.selected_game = game_name
                 return True
             return False
         self.selected_game = None
-        return True
 
-    def get_game(self):
+    def set_donor(self, title):
         """
-        Returns a string for the selected game
+        Sets the selected donor
+        :param title:
         :return:
         """
-        if self.selected_game is not None:
-            return "{}".format(self.selected_game)
-        return "None"
+        if title is not None:
+            for donor in self.donor_titles:
+                if donor == title:
+                    self.selected_donor = donor
+                    return True
+            return False
+        self.selected_donor = None
+        return True
 
-    def write_config(self):
+    def get_donor_title_id(self, title):
         """
-        Write the donor titles to the config.ini
+        Returns the title id for a given title in config.ini
+        :param title:
         :return:
         """
-        if os.path.exists(self.config_file):
-            os.remove(self.config_file)
-        with open(self.config_file, 'w') as conf:
-            for dt in self.donor_titles:
-                conf.write('{0}={1}\n'.format(dt.get_title_id(), dt.get_currently_used()))
-        return True
+        for option in config.options('DONOR TITLES'):
+            if option == title:
+                return config.get('DONOR TITLES', option)
+
+    def get_donor_used_by(self, title):
+        """
+        Returns the game currently being used by a donor in config.ini
+        :param title:
+        :return:
+        """
+        for option in config.options('DONORS USED'):
+            if option == title:
+                return config.get('DONORS USED', option)
+
+    def set_donor_used_by(self, title, game_name):
+        """
+        Updateds the donor in config.ini to be the selected game
+        :param title:
+        :param game_name:
+        :return:
+        """
+        for option in config.options('DONORS USED'):
+            if option == title:
+                if game_name is None:
+                    config.set('DONORS USED', option, 'None')
+                else:
+                    config.set('DONORS USED', option, game_name)
+                self.write_config()
+
+    def generate_config(self):
+        """
+        Generates a new config
+        :return:
+        """
+        config.add_section('COMMON')
+        config.set('COMMON', 'romfs', '/RomFs/')
+        config.set('COMMON', 'exefs', '/ExeFs/')
+        config.set('COMMON', 'games path', '/switch/games/')
+        config.set('COMMON', 'donor path', '/atmosphere/titles/')
+        config.set('COMMON', 'npdm file', 'main.npdm')
+        config.add_section('DONOR TITLES')
+        config.add_section('DONORS USED')
+        for key, val in self.DEFAULT_DONOR_DICT.items():
+            config.set('DONOR TITLES', key, val)
+            config.set('DONORS USED', key, 'None')
+        self.write_config()
 
     def read_config(self):
         """
-        Read in the config.ini and setup the donor titles
+        Reads in the current config
         :return:
         """
-        if self.donor_titles is not None:
-            if os.path.exists(self.config_file):
-                dt = []
-                with open(self.config_file, 'r') as conf:
-                    for index, line in enumerate(conf.readlines()):
-                        line = line.strip()
-                        line_split = line.split("=")
-                        dtt = DonorTitle(line_split[0])
-                        if line_split[1] is not 'None':
-                            dtt.set_currently_used(line_split[1])
-                        dt.append(dtt)
-                self.donor_titles = dt
-        else:
-            self.reset_config()
+        config.read(self.CONFIG_PATH)
+        self.games_path = config.get('COMMON', 'games path')
+        self.donor_path = config.get('COMMON', 'donor path')
+        self.romfs = config.get('COMMON', 'romfs')
+        self.exefs = config.get('COMMON', 'exefs')
+        self.npdm_file = config.get('COMMON', 'npdm file')
+        # We can get the rest of the information if we know the titles, no need to pull them
+        self.donor_titles = config.options('DONOR TITLES')
 
-    def reset_config(self):
+    def write_config(self):
         """
-        Deletes and resets the config.ini file
+        Writes to the config file
         :return:
         """
-        if os.path.exists(self.config_file):
-            os.remove(self.config_file)
-        dt = []
-        for i in range(len(DONOR_TIDS)):
-            dtt = DonorTitle(DONOR_TIDS[i])
-            dtt.set_currently_used(None)
-            dt.append(dtt)
-        self.donor_titles = dt
-        self.write_config()
+        with open(self.CONFIG_PATH, 'w') as conf_file:
+            config.write(conf_file)
 
     def move_to_donor(self):
         """
         Moves the selected game to the selected donor
+        :return:
+        """
+        donor_id = self.get_donor_title_id(self.selected_donor)
+        if not os.path.exists(self.donor_path + donor_id):
+            src = self.games_path + self.selected_game
+            dst = self.donor_path + donor_id
+            print("Moving {0} to {1}...".format(self.selected_game, self.selected_donor))
+            print("Moving romfs...")
+            move(src + self.romfs, dst + self.romfs)
+            print("Moving exefs...")
+            move(src + self.exefs, dst + self.exefs)
+            print("Success!")
+            print("Removing extras...")
+            if os.path.exists(src + self.romfs):
+                shutil.rmtree(src + self.romfs)
+            if os.path.exists(src + self.exefs):
+                shutil.rmtree(src + self.exefs)
+            print("Success!")
+            print("Updating config.ini...")
+            self.set_donor_used_by(self.selected_donor, self.selected_game)
+            self.write_config()
+            print("Success!")
+            return True
+        return False
+
+    def move_to_games(self, specific_donor=None):
+        """
+        Moves the current game being used by the donor to the games storage location
+        :param specific_donor:
+        :return:
+        """
+        if specific_donor is None:
+            donor_id = self.get_donor_title_id(self.selected_donor)
+            game_using = self.get_donor_used_by(self.selected_donor)
+        else:
+            donor_id = self.get_donor_title_id(specific_donor)
+            game_using = self.get_donor_used_by(specific_donor)
+        if os.path.exists(self.donor_path + donor_id):
+            src = self.donor_path + donor_id
+            dst = self.games_path + game_using
+            print("Moving game from {0} to {1}".format(self.selected_donor, game_using))
+            print("Moving romfs...")
+            move(src + self.romfs, dst + self.romfs)
+            print("Moving exefs...")
+            move(src + self.exefs, dst + self.exefs)
+            print("Success!")
+            print("Removing extras...")
+            if os.path.exists(src):
+                shutil.rmtree(src)
+            print("Success!")
+            print("Updating config.ini...")
+            if specific_donor is None:
+                self.set_donor_used_by(self.selected_donor, None)
+            else:
+                self.set_donor_used_by(specific_donor, None)
+            self.write_config()
+            print("Success!")
+            return True
+        return False
+
+    def swap_currently_selected(self):
+        """
+        Swap the selected game into the donor and moves out the currently used game if it is found
         :return:
         """
         self.read_config()
@@ -237,89 +272,46 @@ class Manager(object):
             print("Select a game first")
             countdown()
             return False
-        if self.selected_donor.get_currently_used() != 'None':
-            self.move_to_games()
-        if not os.path.exists(DONOR_PATH + self.selected_donor.get_title_id()):
-            if self.selected_donor.set_currently_used(self.selected_game):
-                with suppress(OSError):
-                    print("Moving game to donor...")
-                    shutil.move(GAMES_PATH + self.selected_game + ROMFS_PATH[ROMFS_STYLE],
-                                DONOR_PATH + self.selected_donor.get_title_id() + ROMFS_PATH[ROMFS_STYLE])
-                    shutil.move(GAMES_PATH + self.selected_game + EXEFS_PATH,
-                                DONOR_PATH + self.selected_donor.get_title_id() + EXEFS_PATH)
-                    print("Success!")
-                    print("Removing extras")
-                    if os.path.exists(GAMES_PATH + self.selected_game + ROMFS_PATH[ROMFS_STYLE]):
-                        shutil.rmtree(GAMES_PATH + self.selected_game + ROMFS_PATH[ROMFS_STYLE])
-                    if os.path.exists(GAMES_PATH + self.selected_game + EXEFS_PATH):
-                        shutil.rmtree(GAMES_PATH + self.selected_game + EXEFS_PATH)
-                    print("Success!")
-                print("Updating config.ini ...")
-                self.write_config()
-                print("Success!")
-                return True
-        return False
-
-    def move_to_games(self):
-        """
-        Moves the selected donor game to the games folder
-        :return:
-        """
-        self.read_config()
-        if self.selected_donor is None:
-            print("Select a donor first")
-            countdown()
+        if self.get_donor_used_by(self.selected_donor) != 'None':
+            if self.move_to_games():
+                pass
+            else:
+                print('move_to_games() Failed!')
+                return False
+        if self.move_to_donor():
+            pass
+        else:
+            print('move_to_donor() Failed!')
             return False
-        if os.path.exists(DONOR_PATH + self.selected_donor.get_title_id()):
-            if self.selected_donor.set_currently_used(None):
-                with suppress(OSError):
-                    print("Moving game from donor to /switch/games...")
-                    shutil.move(DONOR_PATH + self.selected_donor.get_title_id() + ROMFS_PATH[ROMFS_STYLE],
-                                GAMES_PATH + self.selected_donor.get_currently_used() + ROMFS_PATH[ROMFS_STYLE])
-                    shutil.move(DONOR_PATH + self.selected_donor.get_title_id() + EXEFS_PATH,
-                                GAMES_PATH + self.selected_donor.get_currently_used() + EXEFS_PATH)
-                    print("Success!")
-                    print("Removing extras...")
-                    if os.path.exists(DONOR_PATH + self.selected_donor.get_title_id()):
-                        shutil.rmtree(DONOR_PATH + self.selected_donor.get_title_id())
-                    print("Success!")
-                self.write_config()
+        countdown()
+        return True
 
     def move_all_to_games(self):
         """
-        Moves all currently used games back to the games folder
+        Iterates through the donors and moves all games back to the games directory
         :return:
         """
-        self.read_config()
         for donor in self.donor_titles:
-            if os.path.exists(DONOR_PATH + donor.get_title_id()):
-                if donor.set_currently_used(None):
-                    with suppress(OSError):
-                        print("Moving game from {} to /switch/games/".format(donor.get_title_id()))
-                        shutil.move(DONOR_PATH + donor.get_title_id() + ROMFS_PATH[ROMFS_STYLE],
-                                    GAMES_PATH + donor.get_currently_used() + ROMFS_PATH[ROMFS_STYLE])
-                        shutil.move(DONOR_PATH + donor.get_title_id() + EXEFS_PATH,
-                                    GAMES_PATH + donor.get_currently_used() + EXEFS_PATH)
-                        print("Success!")
-                        print("Removing extras...")
-                        if os.path.exists(DONOR_PATH + donor.get_title_id()):
-                            shutil.rmtree(DONOR_PATH + donor.get_title_id())
-                        print("Success!")
-                    self.write_config()
+            print("Moving files from {0} to {1}".format(donor, self.get_donor_used_by(donor)))
+            if self.move_to_games(specific_donor=donor):
+                print("Success!")
 
     def edit_npdm(self):
         """
-        Edit the npdm for the selected game to match the selected donor
+        Edits the NPDM of the selected game to match the selected donor
         :return:
         """
-        if not os.path.exists(GAMES_PATH + self.selected_game + NPDM_PATH + '.bak'):
-            print("Backing up NPDM")
-            with suppress(OSError):
-                shutil.copy2(GAMES_PATH + self.selected_game + NPDM_PATH,
-                             GAMES_PATH + self.selected_game + NPDM_PATH + '.bak')
-            print("Finished")
-        with open(GAMES_PATH + self.selected_game + NPDM_PATH, 'r+b') as npdm:
-            donor_id = self.selected_donor.get_title_id()
+        if not os.path.exists(self.games_path + self.selected_game + self.exefs + self.npdm_file + '.bak'):
+            print("Backing up NPDM...")
+            try:
+                shutil.copy2(self.games_path + self.selected_game + self.exefs + self.npdm_file,
+                             self.games_path + self.selected_game + self.exefs + self.npdm_file + '.bak')
+            except OSError:
+                pass
+            print("Success!")
+        print("Editing {0}'s npdm for {1}".format(self.selected_game, self.selected_donor))
+        with open(self.games_path + self.selected_game + self.exefs + self.npdm_file, 'r+b') as npdm:
+            donor_id = self.get_donor_title_id(self.selected_donor)
             donor_id_flipped = "".join(reversed([donor_id[i:i + 2] for i in range(0, len(donor_id), 2)]))
             donor_id = bytearray.fromhex(donor_id_flipped)
             content = bytearray(npdm.read())
@@ -328,24 +320,31 @@ class Manager(object):
             content[tid_offset:tid_offset + tid_length] = donor_id
             npdm.seek(0)
             npdm.write(content)
+        print("Success!")
         return True
 
     def to_strings(self):
         """
-        Returns an array of strings to be used with AnsiMenu
+        Creates the list of strings from the show config menu
         :return:
         """
-        lines = ["-> Press any option to return to the main menu"]
-        for index, dt in enumerate(self.donor_titles):
-            if dt.get_currently_used() is None:
-                tmp = 'None'
-            else:
-                tmp = dt.get_currently_used()
-            lines.append("{0} is currently being used by {1}".format(DONOR_TITLES[index], tmp))
+        lines = ["-> Press any option to return to main menu"]
+        lines.append(MENU_SEP)
+        lines.append("[COMMON]")
+        for option in config.options('COMMON'):
+            lines.append("{0} = {1}".format(option, config.get('COMMON', option)))
+        lines.append("")
+        lines.append("[DONOR TITLES]")
+        for option in config.options('DONOR TITLES'):
+            lines.append("{0} = {1}".format(option, config.get('DONOR TITLES', option)))
+        lines.append("")
+        lines.append("[DONORS USED]")
+        for option in config.options('DONORS USED'):
+            lines.append("{0} is currently being used by {1}".format(option, config.get('DONORS USED', option)))
+        lines.append("")
+        lines.append(MENU_SEP)
+        lines.append("-> Press any option to return to main menu")
         return lines
-
-
-configuration = Manager(CONFIG_PATH, ERROR_PATH)
 
 
 def menu_creator(list_of_strings, action=None, break_after_action=True, break_if_selected_is=-1):
@@ -375,7 +374,7 @@ def donor_menu():
     Creates the 'Select Donor Title' menu
     :return:
     """
-    menu_creator(DONOR_TITLES, action=donor_menu_action)
+    menu_creator(manager.donor_titles, action=donor_menu_action)
 
 
 def donor_menu_action(selected):
@@ -384,8 +383,8 @@ def donor_menu_action(selected):
     :param selected:
     :return:
     """
-    configuration.set_donor(DONOR_TIDS[selected])
-    print("selected {}".format(DONOR_TIDS[selected]))
+    manager.set_donor(manager.donor_titles[selected])
+    print("selected {}".format(manager.donor_titles[selected]))
     time.sleep(0.5)
     clear()
 
@@ -395,7 +394,7 @@ def game_menu():
     Creates the 'Select Game Folder' menu
     :return:
     """
-    menu_creator(os.listdir(GAMES_PATH), action=game_menu_action)
+    menu_creator(os.listdir(manager.games_path), action=game_menu_action)
 
 
 def game_menu_action(selected):
@@ -404,8 +403,8 @@ def game_menu_action(selected):
     :param selected:
     :return:
     """
-    configuration.set_game(os.listdir(GAMES_PATH)[selected])
-    print("selected {}".format(os.listdir(GAMES_PATH)[selected]))
+    manager.set_game(os.listdir(manager.games_path)[selected])
+    print("selected {}".format(os.listdir(manager.games_path)[selected]))
     time.sleep(0.5)
     clear()
 
@@ -415,7 +414,7 @@ def config_menu():
     Creates the 'Show Config' menu
     :return:
     """
-    menu_creator(configuration.to_strings())
+    menu_creator(manager.to_strings())
 
 
 def main_menu_action(selected):
@@ -430,33 +429,32 @@ def main_menu_action(selected):
     elif selected == 1:
         game_menu()
     elif selected == 2:
-        configuration.move_to_donor()
+        manager.swap_currently_selected()
         countdown()
     elif selected == 3:
-        configuration.edit_npdm()
-        configuration.move_to_donor()
+        manager.edit_npdm()
+        manager.swap_currently_selected()
         countdown()
     elif selected == 4:
-        configuration.move_to_games()
+        manager.move_to_games()
         countdown()
     elif selected == 5:
-        configuration.move_all_to_games()
+        manager.move_all_to_games()
         countdown()
     elif selected == 7:
         config_menu()
-    elif selected == 8:
-        configuration.reset_config()
-        countdown()
+
+
+config = configparser.ConfigParser()
+manager = Manager()
 
 
 def main():
-    """
-    Main Loop... Do you really need me to annotate this?
-    We read the config... then make the menu...
-    """
-    configuration.read_config()
+    if not os.path.exists(manager.CONFIG_PATH):
+        manager.generate_config()
+    manager.read_config()
     clear()
-    menu_creator(MAIN_OPTIONS, action=main_menu_action, break_after_action=False, break_if_selected_is=10)
+    menu_creator(MAIN_OPTIONS, action=main_menu_action, break_after_action=False, break_if_selected_is=9)
 
 
 if __name__ == '__main__':
